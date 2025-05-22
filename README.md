@@ -49,16 +49,64 @@
 ### Options
 options | description
 ------------ | -------------
- source_arb | (@required) path to the source arb file which has to be translated to other languages
+ source_arb | (@required if source_dir not provided) path to the source arb file which has to be translated to other languages
+ source_dir | (@required if source_arb not provided) path to a directory containing ARB files to be translated recursively. Each file will be translated to all specified languages and saved in language-specific subdirectories.
  api_key | (@required) path to the file of api key which contains api key of google cloud console
- output_directory | (optional) directory where the translated files should be written , by-default it is set to directory of ```source_arb``` file
+ output_directory | (optional) directory where the translated files should be written. When using --source_arb, defaults to the directory of the source file. When using --source_dir, defaults to the parent directory of the source directory.
  language_codes | (optional) comma separated language codes in which translation has to be done  , by-default it is set to en,zh Eg. is ```--language_codes ml,kn,pa,en```
  output_file_name | (optional) output _file_name is the initial name to be concatenated with the language codes. Eg. ```--output_file_name wow``` then this will save the translated files as ```wow_{language_code}.arb```, Suppose the langauge code is ml,hi then the files created will be wow_ml.arb and wow_zh.arb
+ append_lang_code | (optional) whether to append language code to output filenames. Defaults to true. Set to false to keep original filenames.
 
-### Translating
+### Translating a Single File
 
 ```yaml
   pub run arb_translator:translate --source_arb path/to/source_en.arb --api_key path/to/api_key_file --language_codes hi,en,zh
+```
+
+### Translating a Directory Recursively
+
+```yaml
+  pub run arb_translator:translate --source_dir path/to/arb_files --api_key path/to/api_key_file --language_codes hi,en,zh
+```
+
+This will:
+1. Find all .arb files in the source directory and its subdirectories
+2. For each file found, create language-specific subdirectories (e.g., hi/, en/, zh/)
+3. Translate each file into all specified languages
+4. Save the translated files in their respective language directories
+
+For example, if you have:
+```
+path/to/arb_files/
+  ├── app_en.arb
+  └── subdir/
+      └── messages_en.arb
+```
+
+And run with `--language_codes hi,es`, it will create:
+```
+path/to/arb_files/
+  ├── hi/
+  │   ├── app_en_hi.arb
+  │   └── subdir/
+  │       └── messages_en_hi.arb
+  └── es/
+      ├── app_en_es.arb
+      └── subdir/
+          └── messages_en_es.arb
+```
+
+If you run with `--language_codes hi,es --no-append_lang_code`, it will create:
+```
+path/to/arb_files/
+  ├── hi/
+  │   ├── app_en.arb
+  │   └── subdir/
+  │       └── messages_en.arb
+  └── es/
+      ├── app_en.arb
+      └── subdir/
+          └── messages_en.arb
 ```
 
 ### Changing location of translated file 

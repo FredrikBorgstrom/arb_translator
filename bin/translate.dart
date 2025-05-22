@@ -17,11 +17,13 @@ final encoder = JsonEncoder.withIndent('  ');
 final decoder = JsonDecoder();
 
 const _sourceArb = 'source_arb';
+const _sourceDir = 'source_dir';
 const _apiKey = 'api_key';
 const _help = 'help';
 const _outputDirectory = 'output_directory';
 const _languageCodes = 'language_codes';
 const _outputFileName = 'output_file_name';
+const _appendLangCode = 'append_lang_code';
 
 class Action {
   final ArbResource Function(String translation, String currentText)
@@ -46,19 +48,19 @@ void main(List<String> args) async {
 
   final result = parseArguments(args);
 
-  final arbFile = createFileRef(result[_sourceArb] as String);
+  final sourceDir = result[_sourceDir] as String?;
+  final sourceArb = result[_sourceArb] as String?;
   final apiKeyFile = createFileRef(result[_apiKey] as String);
-  final outputFileName = result[_outputFileName] as String;
+  String outputFileName = result[_outputFileName] as String;
+  if (outputFileName == 'arb_translator_') {
+    outputFileName = '';
+  }
   final languageCodes =
       (result[_languageCodes] as List<String>).map((e) => e.trim()).toList();
   var outputDirectory = result[_outputDirectory] as String?;
+  final appendLangCode = result[_appendLangCode] as bool? ?? true;
 
   final apiKey = apiKeyFile.readAsStringSync();
-  final src = arbFile.readAsStringSync();
-  final arbDocument = ArbDocument.decode(src);
-
-  outputDirectory ??=
-      arbFile.path.substring(0, arbFile.path.lastIndexOf('/') + 1);
 
   if (languageCodes.toSet().length != languageCodes.length) {
     _setBrightRed();
@@ -67,12 +69,114 @@ void main(List<String> args) async {
   }
   print('${'-' * 15}  $name $version  ${'-' * 15}');
 
+  if (sourceDir != null) {
+    await processDirectory(sourceDir, languageCodes, apiKey, outputDirectory,
+        outputFileName, appendLangCode);
+  } else if (sourceArb != null) {
+    await processSingleFile(sourceArb, languageCodes, apiKey, outputDirectory,
+        outputFileName, appendLangCode);
+  } else {
+    _setBrightRed();
+    stderr.write('Either --source_arb or --source_dir must be provided.');
+    exit(2);
+  }
+
+  _setBrightGreen();
+  print('✓ Translations created');
+  Console.resetTextColor();
+}
+
+Future<void> processDirectory(
+  String sourceDir,
+  List<String> languageCodes,
+  String apiKey,
+  String? outputDirectory,
+  String outputFileName,
+  bool appendLangCode,
+) async {
+  final dir = Directory(sourceDir);
+  if (!dir.existsSync()) {
+    _setBrightRed();
+    stderr.write('Source directory $sourceDir does not exist');
+    exit(2);
+  }
+
+  // Set default output directory to parent of source directory if not specified
+  final effectiveOutputDir =
+      outputDirectory ?? path.dirname(path.absolute(sourceDir));
+
+  // Find all ARB files recursively
+  final arbFiles = await findArbFiles(dir);
+  if (arbFiles.isEmpty) {
+    _setBrightRed();
+    stderr.write('No ARB files found in $sourceDir');
+    exit(2);
+  }
+
+  print('Found ${arbFiles.length} ARB files to translate');
+  print('Output directory: $effectiveOutputDir');
+
+  for (final arbFile in arbFiles) {
+    final relativePath = path.relative(arbFile.path, from: sourceDir);
+    final fileName = path.basename(arbFile.path);
+    final fileNameWithoutExt = path.basenameWithoutExtension(fileName);
+    final fileExt = path.extension(fileName);
+
+    for (final languageCode in languageCodes) {
+      final langOutputDir = path.join(effectiveOutputDir, languageCode);
+      final langOutputFileName = outputFileName.isEmpty
+          ? appendLangCode
+              ? '${fileNameWithoutExt}_$languageCode$fileExt'
+              : fileName
+          : appendLangCode
+              ? '${outputFileName}_$languageCode$fileExt'
+              : outputFileName;
+
+      await processSingleFile(
+        arbFile.path,
+        [languageCode],
+        apiKey,
+        langOutputDir,
+        langOutputFileName,
+        appendLangCode,
+      );
+    }
+  }
+}
+
+Future<List<File>> findArbFiles(Directory dir) async {
+  final List<File> arbFiles = [];
+
+  await for (final entity in dir.list(recursive: true)) {
+    if (entity is File && entity.path.endsWith('.arb')) {
+      arbFiles.add(entity);
+    }
+  }
+
+  return arbFiles;
+}
+
+Future<void> processSingleFile(
+  String sourceArb,
+  List<String> languageCodes,
+  String apiKey,
+  String? outputDirectory,
+  String outputFileName,
+  bool appendLangCode,
+) async {
+  final arbFile = createFileRef(sourceArb);
+  final src = arbFile.readAsStringSync();
+  final arbDocument = ArbDocument.decode(src);
+
+  outputDirectory ??=
+      arbFile.path.substring(0, arbFile.path.lastIndexOf('/') + 1);
+
   final actionLists = createActionLists(arbDocument);
 
   for (final languageCode in languageCodes) {
     print('• Processing for $languageCode');
 
-    createArbFile(
+    await createArbFile(
       languageCode: languageCode,
       arbDocument: arbDocument,
       actionLists: actionLists,
@@ -81,10 +185,6 @@ void main(List<String> args) async {
       apiKey: apiKey,
     );
   }
-
-  _setBrightGreen();
-  print('✓ Transalations created');
-  Console.resetTextColor();
 }
 
 List<List<Action>> createActionLists(ArbDocument arbDocument) {
@@ -129,7 +229,7 @@ List<List<Action>> createActionLists(ArbDocument arbDocument) {
   return actionLists;
 }
 
-void createArbFile({
+Future<void> createArbFile({
   required String languageCode,
   required ArbDocument arbDocument,
   required List<List<Action>> actionLists,
@@ -183,10 +283,10 @@ void createArbFile({
   }
 
   final file = await File(
-    path.join(outputDirectory, '$outputFileName$languageCode.arb'),
+    path.join(outputDirectory, outputFileName),
   ).create(recursive: true);
 
-  file.writeAsStringSync(newArbDocument.encode());
+  await file.writeAsString(newArbDocument.encode());
 }
 
 List<List<String>> insertManualTranslations(
@@ -278,6 +378,11 @@ ArgParser _initiateParse() {
           '[language_codes] provided.',
     )
     ..addOption(
+      _sourceDir,
+      help:
+          'source directory containing ARB files to be translated recursively',
+    )
+    ..addOption(
       _outputDirectory,
       help: 'directory from where source_arb file was read',
     )
@@ -288,6 +393,11 @@ ArgParser _initiateParse() {
       defaultsTo: 'arb_translator_',
       help: 'output_file_name is the file name used to concate before language '
           'codes',
+    )
+    ..addFlag(
+      _appendLangCode,
+      defaultsTo: true,
+      help: 'whether to append language code to output filenames',
     );
 
   return parser;
@@ -302,15 +412,15 @@ ArgResults parseArguments(List<String> args) {
     exit(0);
   }
 
-  if (!result.wasParsed(_sourceArb)) {
+  if (!result.wasParsed(_sourceArb) && !result.wasParsed(_sourceDir)) {
     _setBrightRed();
-    stderr.write('--source_arb is required.');
+    stderr.write('Either --source_arb or --source_dir is required.');
     exit(2);
   }
 
   if (!result.wasParsed(_apiKey)) {
     _setBrightRed();
-    stderr.write('---api_key is required');
+    stderr.write('--api_key is required');
     exit(2);
   }
   return result;
