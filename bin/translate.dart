@@ -3,6 +3,7 @@ library translate;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:arb_merge/arb_merge.dart';
 import 'package:arb_translator/src/models/arb_attributes.dart';
 import 'package:arb_translator/src/models/arb_document.dart';
 import 'package:arb_translator/src/models/arb_resource.dart';
@@ -27,6 +28,7 @@ const _outputFileName = 'output_file_name';
 const _appendLangCode = 'append_lang_code';
 const _copySourceToOutput = 'copy_source_to_output';
 const _onlyProcessChanges = 'only_process_changes';
+const _l10nDirectory = 'l10n_directory';
 
 class Action {
   final ArbResource Function(String translation, String currentText)
@@ -64,6 +66,7 @@ void main(List<String> args) async {
   final appendLangCode = result[_appendLangCode] as bool? ?? true;
   final copySourceToOutput = result[_copySourceToOutput] as bool? ?? false;
   final onlyProcessChanges = result[_onlyProcessChanges] as bool? ?? false;
+  final l10nDirectory = result[_l10nDirectory] as String?;
 
   final apiKey = apiKeyFile.readAsStringSync();
 
@@ -75,8 +78,16 @@ void main(List<String> args) async {
   print('${'-' * 15}  $name $version  ${'-' * 15}');
 
   if (sourceDir != null) {
-    await processDirectory(sourceDir, languageCodes, apiKey, outputDirectory,
-        outputFileName, appendLangCode, copySourceToOutput, onlyProcessChanges);
+    await processDirectory(
+        sourceDir,
+        languageCodes,
+        apiKey,
+        outputDirectory,
+        outputFileName,
+        appendLangCode,
+        copySourceToOutput,
+        onlyProcessChanges,
+        l10nDirectory);
   } else if (sourceArb != null) {
     await processSingleFile(sourceArb, languageCodes, apiKey, outputDirectory,
         outputFileName, appendLangCode);
@@ -100,6 +111,7 @@ Future<void> processDirectory(
   bool appendLangCode,
   bool copySourceToOutput,
   bool onlyProcessChanges,
+  String? l10nDirectory,
 ) async {
   Directory sourceDir = Directory(sourcePath);
   if (!sourceDir.existsSync()) {
@@ -111,6 +123,10 @@ Future<void> processDirectory(
   // Set default output directory to parent of source directory if not specified
   final effectiveOutputPath =
       outputPath ?? path.dirname(path.absolute(sourcePath));
+
+  // Set default l10n directory if not specified
+  final effectiveL10nPath = l10nDirectory ??
+      path.join(path.dirname(path.absolute(sourcePath)), 'l10n');
 
   // Store previous source files before copying (for change detection)
   Map<String, ArbDocument> previousSourceFiles = {};
@@ -198,6 +214,63 @@ Future<void> processDirectory(
         );
       }
     }
+  }
+
+  // Merge all language files to l10n directory
+  await mergeToL10nDirectory(
+      effectiveOutputPath, effectiveL10nPath, languageCodes);
+}
+
+Future<void> mergeToL10nDirectory(
+  String outputPath,
+  String l10nPath,
+  List<String> languageCodes,
+) async {
+  print('Merging translation files to l10n directory...');
+  print('L10n directory: $l10nPath');
+
+  // Create source folders list for each language
+  final sourceFolders = <String>[];
+
+  // Add the main output directory (contains source files and copied files)
+  if (Directory(outputPath).existsSync()) {
+    sourceFolders.add(outputPath);
+  }
+
+  // Add language-specific directories
+  for (final languageCode in languageCodes) {
+    final langDir = path.join(outputPath, languageCode);
+    if (Directory(langDir).existsSync()) {
+      sourceFolders.add(langDir);
+    }
+  }
+
+  if (sourceFolders.isEmpty) {
+    print('No directories found to merge');
+    return;
+  }
+
+  print('Merging from directories: ${sourceFolders.join(', ')}');
+
+  // Create ArbMerge instance
+  final arbMerge = ArbMerge.create(
+    sourceFolders: sourceFolders,
+    destinationFolder: l10nPath,
+    filePattern: 'intl_{lang}.arb',
+    sortKeys: true,
+    verbose: true,
+  );
+
+  try {
+    final result = await arbMerge.run();
+    print('✓ Successfully merged ${result.locales.length} language files:');
+    for (final locale in result.locales) {
+      print('  - intl_$locale.arb');
+    }
+  } catch (e) {
+    _setBrightRed();
+    stderr.write('Error merging files: $e');
+    Console.resetTextColor();
   }
 }
 
@@ -486,6 +559,11 @@ ArgParser _initiateParse() {
       defaultsTo: false,
       help:
           'only translate changed or new keys (requires copy_source_to_output)',
+    )
+    ..addOption(
+      _l10nDirectory,
+      help:
+          'directory where merged intl_x.arb files will be created. Defaults to parent of source directory + /l10n',
     );
 
   return parser;

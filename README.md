@@ -58,6 +58,7 @@ options | description
  append_lang_code | (optional) whether to append language code to output filenames. Defaults to true. Set to false to keep original filenames.
  copy_source_to_output | (optional) whether to copy the source directory to the output directory. Defaults to false. When set to true, the source directory structure will be copied to the output directory before creating translations.
  only_process_changes | (optional) only translate changed or new keys to save translation costs. Defaults to false. Requires copy_source_to_output to be true. Compares existing translations with source files and only translates new or modified keys.
+ l10n_directory | (optional) directory where merged intl_x.arb files will be created. Defaults to parent of source directory + /l10n. All translation files for each language will be merged into single intl_{language_code}.arb files.
 
 ### Translating a Single File
 
@@ -76,6 +77,7 @@ This will:
 2. For each file found, create language-specific subdirectories (e.g., hi/, en/, zh/)
 3. Translate each file into all specified languages
 4. Save the translated files in their respective language directories
+5. **Merge all translation files** for each language into single `intl_{language_code}.arb` files in the l10n directory
 
 For example, if you have:
 ```
@@ -87,46 +89,41 @@ path/to/arb_files/
 
 And run with `--language_codes hi,es`, it will create:
 ```
-path/to/arb_files/
-  ├── hi/
-  │   ├── app_en_hi.arb
-  │   └── subdir/
-  │       └── messages_en_hi.arb
-  └── es/
-      ├── app_en_es.arb
-      └── subdir/
-          └── messages_en_es.arb
+path/to/
+  ├── arb_files/
+  │   ├── hi/
+  │   │   ├── app_en_hi.arb
+  │   │   └── subdir/
+  │   │       └── messages_en_hi.arb
+  │   └── es/
+  │       ├── app_en_es.arb
+  │       └── subdir/
+  │           └── messages_en_es.arb
+  └── l10n/
+      ├── intl_hi.arb  (merged from all hi files)
+      └── intl_es.arb  (merged from all es files)
 ```
 
-If you run with `--language_codes hi,es --no-append_lang_code`, it will create:
-```
-path/to/arb_files/
-  ├── hi/
-  │   ├── app_en.arb
-  │   └── subdir/
-  │       └── messages_en.arb
-  └── es/
-      ├── app_en.arb
-      └── subdir/
-          └── messages_en.arb
+### L10n Directory Merging
+
+The tool automatically merges all translation files for each language into consolidated `intl_{language_code}.arb` files in the l10n directory. This is particularly useful for Flutter internationalization where you typically want single files per language.
+
+**Merging Process:**
+1. Collects all ARB files for each language from the output directory (recursively)
+2. Merges them into single files using the `arb_merge` package
+3. Sorts keys alphabetically for consistency
+4. Creates `intl_{language_code}.arb` files in the l10n directory
+
+**Custom L10n Directory:**
+```yaml
+  pub run arb_translator:translate --source_dir path/to/arb_files --api_key path/to/api_key_file --language_codes hi,es --l10n_directory /custom/l10n/path
 ```
 
-If you run with `--language_codes hi,es --copy_source_to_output`, it will create:
-```
-output_directory/
-  ├── arb_files/  (copied source directory)
-  │   ├── app_en.arb
-  │   └── subdir/
-  │       └── messages_en.arb
-  ├── hi/
-  │   ├── app_en_hi.arb
-  │   └── subdir/
-  │       └── messages_en_hi.arb
-  └── es/
-      ├── app_en_es.arb
-      └── subdir/
-          └── messages_en_es.arb
-```
+**Benefits:**
+- **Flutter Ready**: Creates files in the format expected by Flutter's internationalization
+- **Consolidated**: All translations for a language in one file
+- **Organized**: Separates individual translations from final merged files
+- **Sorted**: Keys are alphabetically sorted for better maintainability
 
 ### Cost-Saving Incremental Translation
 
