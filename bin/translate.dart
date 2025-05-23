@@ -24,6 +24,7 @@ const _outputDirectory = 'output_directory';
 const _languageCodes = 'language_codes';
 const _outputFileName = 'output_file_name';
 const _appendLangCode = 'append_lang_code';
+const _copySourceToOutput = 'copy_source_to_output';
 
 class Action {
   final ArbResource Function(String translation, String currentText)
@@ -59,6 +60,7 @@ void main(List<String> args) async {
       (result[_languageCodes] as List<String>).map((e) => e.trim()).toList();
   var outputDirectory = result[_outputDirectory] as String?;
   final appendLangCode = result[_appendLangCode] as bool? ?? true;
+  final copySourceToOutput = result[_copySourceToOutput] as bool? ?? false;
 
   final apiKey = apiKeyFile.readAsStringSync();
 
@@ -71,7 +73,7 @@ void main(List<String> args) async {
 
   if (sourceDir != null) {
     await processDirectory(sourceDir, languageCodes, apiKey, outputDirectory,
-        outputFileName, appendLangCode);
+        outputFileName, appendLangCode, copySourceToOutput);
   } else if (sourceArb != null) {
     await processSingleFile(sourceArb, languageCodes, apiKey, outputDirectory,
         outputFileName, appendLangCode);
@@ -87,43 +89,58 @@ void main(List<String> args) async {
 }
 
 Future<void> processDirectory(
-  String sourceDir,
+  String sourcePath,
   List<String> languageCodes,
   String apiKey,
-  String? outputDirectory,
+  String? outputPath,
   String outputFileName,
   bool appendLangCode,
+  bool copySourceToOutput,
 ) async {
-  final dir = Directory(sourceDir);
-  if (!dir.existsSync()) {
+  Directory sourceDir = Directory(sourcePath);
+  if (!sourceDir.existsSync()) {
     _setBrightRed();
-    stderr.write('Source directory $sourceDir does not exist');
+    stderr.write('Source directory $sourcePath does not exist');
     exit(2);
   }
 
   // Set default output directory to parent of source directory if not specified
-  final effectiveOutputDir =
-      outputDirectory ?? path.dirname(path.absolute(sourceDir));
+  final effectiveOutputPath =
+      outputPath ?? path.dirname(path.absolute(sourcePath));
+
+  // If copy_source_to_output is true, copy the source directory to the output directory
+  if (copySourceToOutput) {
+    final sourceDirName = path.basename(path.absolute(sourcePath));
+    Directory copiedSourceDir =
+        Directory(path.join(effectiveOutputPath, sourceDirName));
+
+    print('Copying source directory to output directory...');
+    await _copyDirectory(sourceDir, copiedSourceDir);
+    print('Source directory copied to: $copiedSourceDir');
+
+    // Update sourceDir to point to the copied directory
+    sourceDir = copiedSourceDir;
+  }
 
   // Find all ARB files recursively
-  final arbFiles = await findArbFiles(dir);
+  final arbFiles = await findArbFiles(sourceDir);
   if (arbFiles.isEmpty) {
     _setBrightRed();
-    stderr.write('No ARB files found in $sourceDir');
+    stderr.write('No ARB files found in $sourcePath');
     exit(2);
   }
 
   print('Found ${arbFiles.length} ARB files to translate');
-  print('Output directory: $effectiveOutputDir');
+  print('Output directory: $effectiveOutputPath');
 
   for (final arbFile in arbFiles) {
-    final relativePath = path.relative(arbFile.path, from: sourceDir);
+    // final relativePath = path.relative(arbFile.path, from: sourcePath);
     final fileName = path.basename(arbFile.path);
     final fileNameWithoutExt = path.basenameWithoutExtension(fileName);
     final fileExt = path.extension(fileName);
 
     for (final languageCode in languageCodes) {
-      final langOutputDir = path.join(effectiveOutputDir, languageCode);
+      final langOutputDir = path.join(effectiveOutputPath, languageCode);
       final langOutputFileName = outputFileName.isEmpty
           ? appendLangCode
               ? '${fileNameWithoutExt}_$languageCode$fileExt'
@@ -140,6 +157,26 @@ Future<void> processDirectory(
         langOutputFileName,
         appendLangCode,
       );
+    }
+  }
+}
+
+// Helper function to copy a directory recursively
+Future<void> _copyDirectory(Directory source, Directory destination) async {
+  // Create the destination directory if it doesn't exist
+  if (!await destination.exists()) {
+    await destination.create(recursive: true);
+  }
+
+  // Copy all files and subdirectories
+  await for (final entity in source.list(recursive: false)) {
+    final destinationPath =
+        path.join(destination.path, path.basename(entity.path));
+
+    if (entity is File) {
+      await File(entity.path).copy(destinationPath);
+    } else if (entity is Directory) {
+      await _copyDirectory(entity, Directory(destinationPath));
     }
   }
 }
@@ -398,6 +435,11 @@ ArgParser _initiateParse() {
       _appendLangCode,
       defaultsTo: true,
       help: 'whether to append language code to output filenames',
+    )
+    ..addFlag(
+      _copySourceToOutput,
+      defaultsTo: false,
+      help: 'whether to copy the source directory to the output directory',
     );
 
   return parser;

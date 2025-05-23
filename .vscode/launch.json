@@ -31,9 +31,11 @@
                 "--language_codes",
                 "sv",
                 "--output_directory",
-                "/Volumes/WD_SN770_2TB/Github/abcx3_flutter/lib/l10n_static/sv",
+                "/Volumes/WD_SN770_2TB/Github/abcx3_flutter/lib/l10n_translated",
                 "--append_lang_code",
-                "false"
+                "0",
+                "--copy_source_to_output",
+                "1"
             ],
         }
     ]

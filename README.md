@@ -56,6 +56,7 @@ options | description
  language_codes | (optional) comma separated language codes in which translation has to be done  , by-default it is set to en,zh Eg. is ```--language_codes ml,kn,pa,en```
  output_file_name | (optional) output _file_name is the initial name to be concatenated with the language codes. Eg. ```--output_file_name wow``` then this will save the translated files as ```wow_{language_code}.arb```, Suppose the langauge code is ml,hi then the files created will be wow_ml.arb and wow_zh.arb
  append_lang_code | (optional) whether to append language code to output filenames. Defaults to true. Set to false to keep original filenames.
+ copy_source_to_output | (optional) whether to copy the source directory to the output directory. Defaults to false. When set to true, the source directory structure will be copied to the output directory before creating translations.
 
 ### Translating a Single File
 
@@ -107,6 +108,23 @@ path/to/arb_files/
       ├── app_en.arb
       └── subdir/
           └── messages_en.arb
+```
+
+If you run with `--language_codes hi,es --copy_source_to_output`, it will create:
+```
+output_directory/
+  ├── arb_files/  (copied source directory)
+  │   ├── app_en.arb
+  │   └── subdir/
+  │       └── messages_en.arb
+  ├── hi/
+  │   ├── app_en_hi.arb
+  │   └── subdir/
+  │       └── messages_en_hi.arb
+  └── es/
+      ├── app_en_es.arb
+      └── subdir/
+          └── messages_en_es.arb
 ```
 
 ### Changing location of translated file 
