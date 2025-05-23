@@ -35,6 +35,8 @@
                 "--append_lang_code",
                 "0",
                 "--copy_source_to_output",
+                "1",
+                "--only_process_changes",
                 "1"
             ],
         }

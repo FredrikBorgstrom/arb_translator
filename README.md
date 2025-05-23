@@ -57,6 +57,7 @@ options | description
  output_file_name | (optional) output _file_name is the initial name to be concatenated with the language codes. Eg. ```--output_file_name wow``` then this will save the translated files as ```wow_{language_code}.arb```, Suppose the langauge code is ml,hi then the files created will be wow_ml.arb and wow_zh.arb
  append_lang_code | (optional) whether to append language code to output filenames. Defaults to true. Set to false to keep original filenames.
  copy_source_to_output | (optional) whether to copy the source directory to the output directory. Defaults to false. When set to true, the source directory structure will be copied to the output directory before creating translations.
+ only_process_changes | (optional) only translate changed or new keys to save translation costs. Defaults to false. Requires copy_source_to_output to be true. Compares existing translations with source files and only translates new or modified keys.
 
 ### Translating a Single File
 
@@ -126,6 +127,30 @@ output_directory/
       └── subdir/
           └── messages_en_es.arb
 ```
+
+### Cost-Saving Incremental Translation
+
+To save on translation costs by only translating new or changed keys:
+
+```yaml
+  pub run arb_translator:translate --source_dir path/to/arb_files --api_key path/to/api_key_file --language_codes hi,es --copy_source_to_output --only_process_changes
+```
+
+This feature:
+1. **Requires** `--copy_source_to_output` to be enabled
+2. Compares the current source files with existing translations
+3. Only translates keys that are:
+   - **New**: Keys that don't exist in the current translation
+   - **Changed**: Keys whose source text has been modified
+4. Preserves existing translations for unchanged keys
+5. Significantly reduces translation API calls and costs
+
+**Example workflow:**
+- **First run**: Translates all keys (normal behavior)
+- **Subsequent runs**: Only translates new/changed keys
+- **Output**: Shows which keys are being translated: `New key found: welcome_message` or `Changed key found: login_button`
+
+**Note**: This feature is particularly useful for large projects where you frequently add or modify only a few translation keys.
 
 ### Changing location of translated file 
 * use ```--output_directory``` with directory argument to change the saving location for the translated output file

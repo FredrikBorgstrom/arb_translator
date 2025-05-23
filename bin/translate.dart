@@ -3,6 +3,7 @@ library translate;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:arb_translator/src/models/arb_attributes.dart';
 import 'package:arb_translator/src/models/arb_document.dart';
 import 'package:arb_translator/src/models/arb_resource.dart';
 import 'package:arb_translator/src/utils.dart';
@@ -25,6 +26,7 @@ const _languageCodes = 'language_codes';
 const _outputFileName = 'output_file_name';
 const _appendLangCode = 'append_lang_code';
 const _copySourceToOutput = 'copy_source_to_output';
+const _onlyProcessChanges = 'only_process_changes';
 
 class Action {
   final ArbResource Function(String translation, String currentText)
@@ -61,6 +63,7 @@ void main(List<String> args) async {
   var outputDirectory = result[_outputDirectory] as String?;
   final appendLangCode = result[_appendLangCode] as bool? ?? true;
   final copySourceToOutput = result[_copySourceToOutput] as bool? ?? false;
+  final onlyProcessChanges = result[_onlyProcessChanges] as bool? ?? false;
 
   final apiKey = apiKeyFile.readAsStringSync();
 
@@ -73,7 +76,7 @@ void main(List<String> args) async {
 
   if (sourceDir != null) {
     await processDirectory(sourceDir, languageCodes, apiKey, outputDirectory,
-        outputFileName, appendLangCode, copySourceToOutput);
+        outputFileName, appendLangCode, copySourceToOutput, onlyProcessChanges);
   } else if (sourceArb != null) {
     await processSingleFile(sourceArb, languageCodes, apiKey, outputDirectory,
         outputFileName, appendLangCode);
@@ -96,6 +99,7 @@ Future<void> processDirectory(
   String outputFileName,
   bool appendLangCode,
   bool copySourceToOutput,
+  bool onlyProcessChanges,
 ) async {
   Directory sourceDir = Directory(sourcePath);
   if (!sourceDir.existsSync()) {
@@ -108,11 +112,31 @@ Future<void> processDirectory(
   final effectiveOutputPath =
       outputPath ?? path.dirname(path.absolute(sourcePath));
 
+  // Store previous source files before copying (for change detection)
+  Map<String, ArbDocument> previousSourceFiles = {};
+
   // If copy_source_to_output is true, copy the source directory to the output directory
   if (copySourceToOutput) {
     final sourceDirName = path.basename(path.absolute(sourcePath));
     Directory copiedSourceDir =
         Directory(path.join(effectiveOutputPath, sourceDirName));
+
+    // If we're doing change detection, read the existing copied files first
+    if (onlyProcessChanges && copiedSourceDir.existsSync()) {
+      print('Reading existing copied files for change detection...');
+      final existingArbFiles = await findArbFiles(copiedSourceDir);
+      for (final arbFile in existingArbFiles) {
+        try {
+          final content = arbFile.readAsStringSync();
+          final document = ArbDocument.decode(content);
+          final relativePath =
+              path.relative(arbFile.path, from: copiedSourceDir.path);
+          previousSourceFiles[relativePath] = document;
+        } catch (e) {
+          print('Warning: Could not parse existing file: ${arbFile.path}');
+        }
+      }
+    }
 
     print('Copying source directory to output directory...');
     await _copyDirectory(sourceDir, copiedSourceDir);
@@ -120,6 +144,7 @@ Future<void> processDirectory(
 
     // Update sourceDir to point to the copied directory
     sourceDir = copiedSourceDir;
+    sourcePath = copiedSourceDir.path;
   }
 
   // Find all ARB files recursively
@@ -149,14 +174,29 @@ Future<void> processDirectory(
               ? '${outputFileName}_$languageCode$fileExt'
               : outputFileName;
 
-      await processSingleFile(
-        arbFile.path,
-        [languageCode],
-        apiKey,
-        langOutputDir,
-        langOutputFileName,
-        appendLangCode,
-      );
+      if (onlyProcessChanges && copySourceToOutput) {
+        final relativePath = path.relative(arbFile.path, from: sourcePath);
+        final previousDocument = previousSourceFiles[relativePath];
+
+        await processSingleFileWithChanges(
+          arbFile.path,
+          [languageCode],
+          apiKey,
+          langOutputDir,
+          langOutputFileName,
+          appendLangCode,
+          previousDocument,
+        );
+      } else {
+        await processSingleFile(
+          arbFile.path,
+          [languageCode],
+          apiKey,
+          langOutputDir,
+          langOutputFileName,
+          appendLangCode,
+        );
+      }
     }
   }
 }
@@ -440,6 +480,12 @@ ArgParser _initiateParse() {
       _copySourceToOutput,
       defaultsTo: false,
       help: 'whether to copy the source directory to the output directory',
+    )
+    ..addFlag(
+      _onlyProcessChanges,
+      defaultsTo: false,
+      help:
+          'only translate changed or new keys (requires copy_source_to_output)',
     );
 
   return parser;
@@ -477,4 +523,253 @@ File createFileRef(String path) {
     stderr.write('$file not found on path ${file.path}');
     exit(2);
   }
+}
+
+Future<void> processSingleFileWithChanges(
+  String sourceArbPath,
+  List<String> languageCodes,
+  String apiKey,
+  String outputDirectory,
+  String outputFileName,
+  bool appendLangCode,
+  ArbDocument? previousSourceDocument,
+) async {
+  final sourceArbFile = File(sourceArbPath);
+  final sourceContent = sourceArbFile.readAsStringSync();
+  final sourceDocument = ArbDocument.decode(sourceContent);
+
+  // Check if output file already exists
+  final outputFilePath = path.join(outputDirectory, outputFileName);
+  final outputFile = File(outputFilePath);
+
+  ArbDocument? existingTranslation;
+  if (outputFile.existsSync()) {
+    try {
+      final existingContent = outputFile.readAsStringSync();
+      existingTranslation = ArbDocument.decode(existingContent);
+    } catch (e) {
+      print(
+          'Warning: Could not parse existing translation file: $outputFilePath');
+    }
+  }
+
+  // Determine which keys need translation
+  final keysToTranslate = <String, ArbResource>{};
+
+  for (final entry in sourceDocument.resources.entries) {
+    final key = entry.key;
+    final resource = entry.value;
+
+    // Check if this key needs translation
+    bool needsTranslation = false;
+
+    if (existingTranslation == null ||
+        !existingTranslation.resources.containsKey(key)) {
+      // New key - needs translation
+      needsTranslation = true;
+      print('New key found: $key');
+    } else if (previousSourceDocument != null &&
+        previousSourceDocument.resources.containsKey(key)) {
+      // Check if the source text has changed compared to the previous version
+      final previousResource = previousSourceDocument.resources[key]!;
+      if (resource.text != previousResource.text) {
+        needsTranslation = true;
+        print(
+            'Changed key found: $key (text was: "${previousResource.text}", now: "${resource.text}")');
+      } else if (!_areAttributesEqual(
+          resource.attributes, previousResource.attributes)) {
+        // Check if attributes have changed
+        needsTranslation = true;
+        print('Changed key found: $key (attributes changed)');
+      }
+    } else if (previousSourceDocument != null &&
+        !previousSourceDocument.resources.containsKey(key)) {
+      // Key exists in current source but not in previous source - it's new
+      needsTranslation = true;
+      print('New key found: $key');
+    } else if (previousSourceDocument == null) {
+      // No previous source file to compare with - translate everything
+      needsTranslation = true;
+      print('No previous source file - translating key: $key');
+    }
+
+    if (needsTranslation) {
+      keysToTranslate[key] = resource;
+    }
+  }
+
+  if (keysToTranslate.isEmpty) {
+    print(
+        'No changes detected for ${path.basename(sourceArbPath)} - skipping translation');
+    return;
+  }
+
+  print(
+      'Translating ${keysToTranslate.length} changed/new keys for ${path.basename(sourceArbPath)}');
+
+  // Create a temporary document with only the keys that need translation
+  final tempDocument = ArbDocument.empty(
+    locale: sourceDocument.locale,
+    appName: sourceDocument.appName,
+    lastModified: sourceDocument.lastModified,
+    resources: keysToTranslate,
+  );
+
+  final actionLists = createActionLists(tempDocument);
+
+  for (final languageCode in languageCodes) {
+    print('• Processing changes for $languageCode');
+
+    // Start with existing translation or create new one
+    var newArbDocument = existingTranslation?.copyWith(locale: languageCode) ??
+        sourceDocument.copyWith(locale: languageCode, resources: {});
+
+    if (actionLists.isNotEmpty) {
+      final unescape = HtmlUnescape();
+
+      final futuresList = actionLists.map((list) {
+        return _translateNow(
+          translateList: list.map((action) => action.text).toList(),
+          parameters: <String, dynamic>{'target': languageCode, 'key': apiKey},
+        );
+      }).toList();
+
+      var translateResults = await Future.wait(futuresList);
+
+      translateResults = insertManualTranslations(
+          translateResults, actionLists, languageCode, tempDocument);
+
+      // Apply translations to the document
+      for (var i = translateResults.length - 1; i >= 0; i--) {
+        final translateList = translateResults[i];
+        final actionList = actionLists[i];
+
+        for (var j = translateList.length - 1; j >= 0; j--) {
+          final action = actionList[j];
+          final translation = translateList[j];
+          final sanitizedTranslation = unescape.convert(
+            translation.contains('<') ? removeHtml(translation) : translation,
+          );
+
+          // Update or add the resource
+          final originalResource = keysToTranslate[action.resourceId]!;
+          final translatedResource = action.updateFunction(
+            sanitizedTranslation,
+            originalResource.text,
+          );
+
+          newArbDocument = newArbDocument.copyWith(
+            resources: newArbDocument.resources
+              ..[action.resourceId] = translatedResource,
+          );
+        }
+      }
+    }
+
+    // Ensure all source keys are present (even if not translated)
+    for (final entry in sourceDocument.resources.entries) {
+      if (!newArbDocument.resources.containsKey(entry.key)) {
+        newArbDocument = newArbDocument.copyWith(
+          resources: newArbDocument.resources
+            ..[entry.key] = entry.value.copyWith(),
+        );
+      }
+    }
+
+    final file = await File(outputFilePath).create(recursive: true);
+    await file.writeAsString(newArbDocument.encode());
+  }
+}
+
+// Helper function to get the original text from a resource (before translation)
+String _getOriginalText(
+    ArbResource translatedResource, ArbResource originalResource) {
+  // This is a simplified approach - in a real scenario, you might want to store
+  // the original text in a comment or metadata
+  return originalResource.text;
+}
+
+bool _areAttributesEqual(ArbAttributes? attr1, ArbAttributes? attr2) {
+  if (attr1 == null && attr2 == null) {
+    return true;
+  }
+  if (attr1 == null || attr2 == null) {
+    return false;
+  }
+
+  // Compare description
+  if (attr1.description != attr2.description) {
+    return false;
+  }
+
+  // Compare placeholders
+  if (!_arePlaceholdersEqual(attr1.placeholders, attr2.placeholders)) {
+    return false;
+  }
+
+  // Compare x-translations
+  if (!_areXTranslationsEqual(attr1.xTranslations, attr2.xTranslations)) {
+    return false;
+  }
+
+  // Compare resource type
+  if (attr1.resourceType != attr2.resourceType) {
+    return false;
+  }
+
+  return true;
+}
+
+bool _arePlaceholdersEqual(Map<String, Map<String, dynamic>>? placeholders1,
+    Map<String, Map<String, dynamic>>? placeholders2) {
+  if (placeholders1 == null && placeholders2 == null) {
+    return true;
+  }
+  if (placeholders1 == null || placeholders2 == null) {
+    return false;
+  }
+  if (placeholders1.length != placeholders2.length) {
+    return false;
+  }
+
+  for (final entry in placeholders1.entries) {
+    if (!placeholders2.containsKey(entry.key)) {
+      return false;
+    }
+    final map1 = entry.value;
+    final map2 = placeholders2[entry.key]!;
+
+    if (map1.length != map2.length) {
+      return false;
+    }
+
+    for (final innerEntry in map1.entries) {
+      if (map2[innerEntry.key] != innerEntry.value) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+bool _areXTranslationsEqual(Map<String, dynamic>? xTranslations1,
+    Map<String, dynamic>? xTranslations2) {
+  if (xTranslations1 == null && xTranslations2 == null) {
+    return true;
+  }
+  if (xTranslations1 == null || xTranslations2 == null) {
+    return false;
+  }
+  if (xTranslations1.length != xTranslations2.length) {
+    return false;
+  }
+
+  for (final entry in xTranslations1.entries) {
+    if (xTranslations2[entry.key] != entry.value) {
+      return false;
+    }
+  }
+
+  return true;
 }
