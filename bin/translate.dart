@@ -27,7 +27,7 @@ const _languageCodes = 'language_codes';
 const _outputFileName = 'output_file_name';
 const _appendLangCode = 'append_lang_code';
 // const _copySourceToOutput = 'copy_source_to_output';
-const _onlyProcessChanges = 'only_process_changes';
+// const _onlyProcessChanges = 'only_process_changes';
 const _l10nDirectory = 'l10n_directory';
 
 class Action {
@@ -53,7 +53,14 @@ void main(List<String> args) async {
 
   final result = parseArguments(args);
 
-  final sourceDir = result[_sourceDir] as String?;
+  final sourcePath = result[_sourceDir] as String?;
+  final sourceDir = Directory(sourcePath ?? '');
+  if (!sourceDir.existsSync()) {
+    _setBrightRed();
+    stderr.write('Source directory $sourcePath does not exist');
+    exit(2);
+  }
+
   final sourceArb = result[_sourceArb] as String?;
   final apiKeyFile = createFileRef(result[_apiKey] as String);
   String outputFileName = result[_outputFileName] as String;
@@ -62,11 +69,16 @@ void main(List<String> args) async {
   }
   final languageCodes =
       (result[_languageCodes] as List<String>).map((e) => e.trim()).toList();
-  var cachePath = result[_cacheDirectory] as String?;
+
+  String? cachePath = result[_cacheDirectory];
+  cachePath ??= path.join('lib', 'l10n_cache');
   final appendLangCode = result[_appendLangCode] as bool? ?? true;
+  String? l10nDirectory = result[_l10nDirectory];
+  l10nDirectory ??= path.join('lib', 'l10n');
+
+  // path.join(path.dirname(path.absolute(sourceDir ?? '')), 'l10n_cache');
   // final copySourceToOutput = result[_copySourceToOutput] as bool? ?? false;
-  final onlyProcessChanges = result[_onlyProcessChanges] as bool? ?? false;
-  final l10nDirectory = result[_l10nDirectory] as String?;
+  // final onlyProcessChanges = result[_onlyProcessChanges] as bool? ?? true;
 
   final apiKey = apiKeyFile.readAsStringSync();
 
@@ -77,16 +89,16 @@ void main(List<String> args) async {
   }
   print('${'-' * 15}  $name $version  ${'-' * 15}');
 
-  if (sourceDir != null) {
+  if (sourcePath != null) {
     await processDirectory(
-        sourceDir,
+        sourcePath,
         languageCodes,
         apiKey,
         cachePath,
         outputFileName,
         appendLangCode,
         // copySourceToOutput,
-        onlyProcessChanges,
+        // onlyProcessChanges,
         l10nDirectory);
   } else if (sourceArb != null) {
     await processSingleFile(sourceArb, languageCodes, apiKey, cachePath,
@@ -110,7 +122,7 @@ Future<void> processDirectory(
   String outputFileName,
   bool appendLangCode,
   // bool copySourceToOutput,
-  bool onlyProcessChanges,
+  // bool onlyProcessChanges,
   String? l10nDirectory,
 ) async {
   Directory sourceDir = Directory(sourcePath);
@@ -132,13 +144,13 @@ Future<void> processDirectory(
   Map<String, ArbDocument> previousSourceFiles = {};
 
   // copy the source directory to the cache directory
-  // if (copySourceToOutput) {
+
   final sourceDirName = path.basename(path.absolute(sourcePath));
   Directory copiedSourceDir =
       Directory(path.join(effectiveOutputPath, sourceDirName));
 
   // If we're doing change detection, read the existing copied files first
-  if (onlyProcessChanges && copiedSourceDir.existsSync()) {
+  if (copiedSourceDir.existsSync()) {
     print('Reading existing copied files for change detection...');
     final existingArbFiles = await findArbFiles(copiedSourceDir);
     for (final arbFile in existingArbFiles) {
@@ -152,7 +164,6 @@ Future<void> processDirectory(
         print('Warning: Could not parse existing file: ${arbFile.path}');
       }
     }
-    // }
 
     print('Copying source directory to output directory...');
     await _copyDirectory(sourceDir, copiedSourceDir);
@@ -190,30 +201,30 @@ Future<void> processDirectory(
               ? '${outputFileName}_$languageCode$fileExt'
               : outputFileName;
 
-      if (onlyProcessChanges) {
-        // && copySourceToOutput
-        final relativePath = path.relative(arbFile.path, from: sourcePath);
-        final previousDocument = previousSourceFiles[relativePath];
+      //if (onlyProcessChanges) {
+      // && copySourceToOutput
+      final relativePath = path.relative(arbFile.path, from: sourcePath);
+      final previousDocument = previousSourceFiles[relativePath];
 
-        await processSingleFileWithChanges(
+      await processSingleFileWithChanges(
+        arbFile.path,
+        [languageCode],
+        apiKey,
+        langOutputDir,
+        langOutputFileName,
+        appendLangCode,
+        previousDocument,
+      );
+      //} else {
+      /* await processSingleFile(
           arbFile.path,
           [languageCode],
           apiKey,
           langOutputDir,
           langOutputFileName,
           appendLangCode,
-          previousDocument,
-        );
-      } else {
-        await processSingleFile(
-          arbFile.path,
-          [languageCode],
-          apiKey,
-          langOutputDir,
-          langOutputFileName,
-          appendLangCode,
-        );
-      }
+        ); */
+      //}
     }
   }
 
@@ -536,7 +547,6 @@ ArgParser _initiateParse() {
     ..addOption(
       _cacheDirectory,
       help: 'directory where the translations will be cached',
-      defaultsTo: 'l10n_cache',
     )
     ..addMultiOption(_languageCodes, defaultsTo: ['es'])
     ..addOption(_apiKey, help: 'path to api_key must be provided')
@@ -551,21 +561,21 @@ ArgParser _initiateParse() {
       defaultsTo: true,
       help: 'whether to append language code to output filenames',
     )
-    /* ..addFlag(
-      _copySourceToOutput,
-      defaultsTo: false,
-      help: 'whether to copy the source directory to the output directory',
-    ) */
-    ..addFlag(
-      _onlyProcessChanges,
-      defaultsTo: false,
-      help: 'only translate changed or new keys',
-    )
     ..addOption(
       _l10nDirectory,
       help:
           'directory where merged intl_x.arb files will be created. Defaults to parent of source directory + /l10n',
     );
+  /* ..addFlag(
+      _copySourceToOutput,
+      defaultsTo: false,
+      help: 'whether to copy the source directory to the output directory',
+    ) */
+  /* ..addFlag(
+      _onlyProcessChanges,
+      defaultsTo: false,
+      help: 'only translate changed or new keys',
+    ) */
 
   return parser;
 }

@@ -30,16 +30,10 @@
                 "/Volumes/WD_SN770_2TB/Github/abcx3_flutter/dart_secrets/api_key.txt",
                 "--language_codes",
                 "sv",
-                "--output_directory",
-                "/Volumes/WD_SN770_2TB/Github/abcx3_flutter/lib/l10n_premerge",
                 "--append_lang_code",
                 "0",
-                "--copy_source_to_output",
-                "1",
-                "--only_process_changes",
-                "1",
-                "--l10n_directory",
-                "/Volumes/WD_SN770_2TB/Github/abcx3_flutter/lib/l10n"
+                // "--l10n_directory",
+                // "/Volumes/WD_SN770_2TB/Github/abcx3_flutter/lib/l10n"
             ],
         }
     ]
