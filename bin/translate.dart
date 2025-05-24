@@ -22,11 +22,11 @@ const _sourceArb = 'source_arb';
 const _sourceDir = 'source_dir';
 const _apiKey = 'api_key';
 const _help = 'help';
-const _outputDirectory = 'output_directory';
+const _cacheDirectory = 'cache_directory';
 const _languageCodes = 'language_codes';
 const _outputFileName = 'output_file_name';
 const _appendLangCode = 'append_lang_code';
-const _copySourceToOutput = 'copy_source_to_output';
+// const _copySourceToOutput = 'copy_source_to_output';
 const _onlyProcessChanges = 'only_process_changes';
 const _l10nDirectory = 'l10n_directory';
 
@@ -62,9 +62,9 @@ void main(List<String> args) async {
   }
   final languageCodes =
       (result[_languageCodes] as List<String>).map((e) => e.trim()).toList();
-  var outputDirectory = result[_outputDirectory] as String?;
+  var cachePath = result[_cacheDirectory] as String?;
   final appendLangCode = result[_appendLangCode] as bool? ?? true;
-  final copySourceToOutput = result[_copySourceToOutput] as bool? ?? false;
+  // final copySourceToOutput = result[_copySourceToOutput] as bool? ?? false;
   final onlyProcessChanges = result[_onlyProcessChanges] as bool? ?? false;
   final l10nDirectory = result[_l10nDirectory] as String?;
 
@@ -82,14 +82,14 @@ void main(List<String> args) async {
         sourceDir,
         languageCodes,
         apiKey,
-        outputDirectory,
+        cachePath,
         outputFileName,
         appendLangCode,
-        copySourceToOutput,
+        // copySourceToOutput,
         onlyProcessChanges,
         l10nDirectory);
   } else if (sourceArb != null) {
-    await processSingleFile(sourceArb, languageCodes, apiKey, outputDirectory,
+    await processSingleFile(sourceArb, languageCodes, apiKey, cachePath,
         outputFileName, appendLangCode);
   } else {
     _setBrightRed();
@@ -106,10 +106,10 @@ Future<void> processDirectory(
   String sourcePath,
   List<String> languageCodes,
   String apiKey,
-  String? outputPath,
+  String? cachePath,
   String outputFileName,
   bool appendLangCode,
-  bool copySourceToOutput,
+  // bool copySourceToOutput,
   bool onlyProcessChanges,
   String? l10nDirectory,
 ) async {
@@ -122,7 +122,7 @@ Future<void> processDirectory(
 
   // Set default output directory to parent of source directory if not specified
   final effectiveOutputPath =
-      outputPath ?? path.dirname(path.absolute(sourcePath));
+      cachePath ?? path.dirname(path.absolute(sourcePath));
 
   // Set default l10n directory if not specified
   final effectiveL10nPath = l10nDirectory ??
@@ -131,28 +131,28 @@ Future<void> processDirectory(
   // Store previous source files before copying (for change detection)
   Map<String, ArbDocument> previousSourceFiles = {};
 
-  // If copy_source_to_output is true, copy the source directory to the output directory
-  if (copySourceToOutput) {
-    final sourceDirName = path.basename(path.absolute(sourcePath));
-    Directory copiedSourceDir =
-        Directory(path.join(effectiveOutputPath, sourceDirName));
+  // copy the source directory to the cache directory
+  // if (copySourceToOutput) {
+  final sourceDirName = path.basename(path.absolute(sourcePath));
+  Directory copiedSourceDir =
+      Directory(path.join(effectiveOutputPath, sourceDirName));
 
-    // If we're doing change detection, read the existing copied files first
-    if (onlyProcessChanges && copiedSourceDir.existsSync()) {
-      print('Reading existing copied files for change detection...');
-      final existingArbFiles = await findArbFiles(copiedSourceDir);
-      for (final arbFile in existingArbFiles) {
-        try {
-          final content = arbFile.readAsStringSync();
-          final document = ArbDocument.decode(content);
-          final relativePath =
-              path.relative(arbFile.path, from: copiedSourceDir.path);
-          previousSourceFiles[relativePath] = document;
-        } catch (e) {
-          print('Warning: Could not parse existing file: ${arbFile.path}');
-        }
+  // If we're doing change detection, read the existing copied files first
+  if (onlyProcessChanges && copiedSourceDir.existsSync()) {
+    print('Reading existing copied files for change detection...');
+    final existingArbFiles = await findArbFiles(copiedSourceDir);
+    for (final arbFile in existingArbFiles) {
+      try {
+        final content = arbFile.readAsStringSync();
+        final document = ArbDocument.decode(content);
+        final relativePath =
+            path.relative(arbFile.path, from: copiedSourceDir.path);
+        previousSourceFiles[relativePath] = document;
+      } catch (e) {
+        print('Warning: Could not parse existing file: ${arbFile.path}');
       }
     }
+    // }
 
     print('Copying source directory to output directory...');
     await _copyDirectory(sourceDir, copiedSourceDir);
@@ -190,7 +190,8 @@ Future<void> processDirectory(
               ? '${outputFileName}_$languageCode$fileExt'
               : outputFileName;
 
-      if (onlyProcessChanges && copySourceToOutput) {
+      if (onlyProcessChanges) {
+        // && copySourceToOutput
         final relativePath = path.relative(arbFile.path, from: sourcePath);
         final previousDocument = previousSourceFiles[relativePath];
 
@@ -533,8 +534,9 @@ ArgParser _initiateParse() {
           'source directory containing ARB files to be translated recursively',
     )
     ..addOption(
-      _outputDirectory,
-      help: 'directory from where source_arb file was read',
+      _cacheDirectory,
+      help: 'directory where the translations will be cached',
+      defaultsTo: 'l10n_cache',
     )
     ..addMultiOption(_languageCodes, defaultsTo: ['es'])
     ..addOption(_apiKey, help: 'path to api_key must be provided')
@@ -549,16 +551,15 @@ ArgParser _initiateParse() {
       defaultsTo: true,
       help: 'whether to append language code to output filenames',
     )
-    ..addFlag(
+    /* ..addFlag(
       _copySourceToOutput,
       defaultsTo: false,
       help: 'whether to copy the source directory to the output directory',
-    )
+    ) */
     ..addFlag(
       _onlyProcessChanges,
       defaultsTo: false,
-      help:
-          'only translate changed or new keys (requires copy_source_to_output)',
+      help: 'only translate changed or new keys',
     )
     ..addOption(
       _l10nDirectory,
