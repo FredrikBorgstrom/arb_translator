@@ -17,4 +17,6 @@ analyzer:
   # This shouldn't be excluded but the types on parsers are very hard
   exclude:
     - "**/*_parser.dart"
-    
+
+formatter:
+  page_width: 120    

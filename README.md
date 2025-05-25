@@ -1,188 +1,307 @@
-# arb_translator
-  
-  <a href="https://flutter.io">  
-    <img src="https://img.shields.io/badge/Platform-Flutter-yellow.svg"  
-      alt="Platform" />  
-  </a> 
-   <a href="https://pub.dartlang.org/packages/arb_translator">  
-    <img src="https://img.shields.io/pub/v/arb_translator.svg"  
-      alt="Pub Package" />  
-  </a>
-   <a href="https://www.paypal.me/kawal7415">  
-    <img src="https://img.shields.io/badge/Donate-PayPal-green.svg"  
-      alt="Donate" />  
-  </a>
-   <a href="https://github.com/justkawal/arb_translator/issues">  
-    <img src="https://img.shields.io/github/issues/justkawal/arb_translator"  
-      alt="Issue" />  
-  </a> 
-   <a href="https://github.com/justkawal/arb_translator/network">  
-    <img src="https://img.shields.io/github/forks/justkawal/arb_translator"  
-      alt="Forks" />  
-  </a> 
-   <a href="https://github.com/justkawal/arb_translator/stargazers">  
-    <img src="https://img.shields.io/github/stars/justkawal/arb_translator"  
-      alt="Stars" />  
-  </a>
-  <br>
-  <br>
- 
-## Uses Google Cloud Translations for translating files.
-[arb_translator](https://www.pub.dev/packages/arb_translator) is a dart command-line tool for translating arb file into multiple languages.
- 
-#### This library is MIT licensed So, it's free to use anytime, anywhere without any consent, because we believe in Open Source work.
+# Smart ARB Translator
 
-# Lets Get Started
+[![Pub Version](https://img.shields.io/pub/v/smart_arb_translator.svg)](https://pub.dev/packages/smart_arb_translator)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-### Add to the command line with
+An intelligent command-line utility for translating ARB (Application Resource Bundle) files using Google Translate API. This package features smart change detection, modular architecture, and seamless integration with Flutter's internationalization workflow.
+
+## 🚀 Features
+
+- **Smart Change Detection**: Only translates modified or new content, saving API calls and time
+- **Modular Architecture**: Clean, maintainable codebase with separated concerns
+- **Batch Processing**: Translate multiple files and directories recursively
+- **Automatic Merging**: Seamlessly integrates with Flutter's l10n directory structure
+- **Manual Translation Override**: Support for custom translations via `@x-translations` metadata
+- **Flexible Output**: Customizable file naming and directory structure
+- **Error Handling**: Robust error handling with detailed feedback
+
+## 📦 Installation
+
+### Global Installation (Recommended)
+
+```bash
+dart pub global activate smart_arb_translator
+```
+
+### Local Installation
+
+Add to your `pubspec.yaml`:
 
 ```yaml
-  flutter packages pub global activate arb_translator
+dev_dependencies:
+  smart_arb_translator: ^1.0.0
 ```
 
-### Find Out available options
+Then run:
 
-```yaml
-  flutter packages pub run arb_translator:translate --help
+```bash
+dart pub get
 ```
 
-### Options
-options | description
------------- | -------------
- source_arb | (@required if source_dir not provided) path to the source arb file which has to be translated to other languages
- source_dir | (@required if source_arb not provided) path to a directory containing ARB files to be translated recursively. Each file will be translated to all specified languages and saved in language-specific subdirectories.
- api_key | (@required) path to the file of api key which contains api key of google cloud console
- output_directory | (optional) directory where the translated files should be written. When using --source_arb, defaults to the directory of the source file. When using --source_dir, defaults to the parent directory of the source directory.
- language_codes | (optional) comma separated language codes in which translation has to be done  , by-default it is set to en,zh Eg. is ```--language_codes ml,kn,pa,en```
- output_file_name | (optional) output _file_name is the initial name to be concatenated with the language codes. Eg. ```--output_file_name wow``` then this will save the translated files as ```wow_{language_code}.arb```, Suppose the langauge code is ml,hi then the files created will be wow_ml.arb and wow_zh.arb
- append_lang_code | (optional) whether to append language code to output filenames. Defaults to true. Set to false to keep original filenames.
- copy_source_to_output | (optional) whether to copy the source directory to the output directory. Defaults to false. When set to true, the source directory structure will be copied to the output directory before creating translations.
- only_process_changes | (optional) only translate changed or new keys to save translation costs. Defaults to false. Requires copy_source_to_output to be true. Compares existing translations with source files and only translates new or modified keys.
- l10n_directory | (optional) directory where merged intl_x.arb files will be created. Defaults to parent of source directory + /l10n. All translation files for each language will be merged into single intl_{language_code}.arb files.
+## 🔧 Setup
 
-### Translating a Single File
+### 1. Google Translate API Key
 
-```yaml
-  pub run arb_translator:translate --source_arb path/to/source_en.arb --api_key path/to/api_key_file --language_codes hi,en,zh
-```
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Enable the Google Translate API
+4. Create credentials (API Key)
+5. Save your API key to a text file (e.g., `api_key.txt`)
 
-### Translating a Directory Recursively
+### 2. ARB File Structure
 
-```yaml
-  pub run arb_translator:translate --source_dir path/to/arb_files --api_key path/to/api_key_file --language_codes hi,en,zh
-```
-
-This will:
-1. Find all .arb files in the source directory and its subdirectories
-2. For each file found, create language-specific subdirectories (e.g., hi/, en/, zh/)
-3. Translate each file into all specified languages
-4. Save the translated files in their respective language directories
-5. **Merge all translation files** for each language into single `intl_{language_code}.arb` files in the l10n directory
-
-For example, if you have:
-```
-path/to/arb_files/
-  ├── app_en.arb
-  └── subdir/
-      └── messages_en.arb
-```
-
-And run with `--language_codes hi,es`, it will create:
-```
-path/to/
-  ├── arb_files/
-  │   ├── hi/
-  │   │   ├── app_en_hi.arb
-  │   │   └── subdir/
-  │   │       └── messages_en_hi.arb
-  │   └── es/
-  │       ├── app_en_es.arb
-  │       └── subdir/
-  │           └── messages_en_es.arb
-  └── l10n/
-      ├── intl_hi.arb  (merged from all hi files)
-      └── intl_es.arb  (merged from all es files)
-```
-
-### L10n Directory Merging
-
-The tool automatically merges all translation files for each language into consolidated `intl_{language_code}.arb` files in the l10n directory. This is particularly useful for Flutter internationalization where you typically want single files per language.
-
-**Merging Process:**
-1. Collects all ARB files for each language from the output directory (recursively)
-2. Merges them into single files using the `arb_merge` package
-3. Sorts keys alphabetically for consistency
-4. Creates `intl_{language_code}.arb` files in the l10n directory
-
-**Custom L10n Directory:**
-```yaml
-  pub run arb_translator:translate --source_dir path/to/arb_files --api_key path/to/api_key_file --language_codes hi,es --l10n_directory /custom/l10n/path
-```
-
-**Benefits:**
-- **Flutter Ready**: Creates files in the format expected by Flutter's internationalization
-- **Consolidated**: All translations for a language in one file
-- **Organized**: Separates individual translations from final merged files
-- **Sorted**: Keys are alphabetically sorted for better maintainability
-
-### Cost-Saving Incremental Translation
-
-To save on translation costs by only translating new or changed keys:
-
-```yaml
-  pub run arb_translator:translate --source_dir path/to/arb_files --api_key path/to/api_key_file --language_codes hi,es --copy_source_to_output --only_process_changes
-```
-
-This feature:
-1. **Requires** `--copy_source_to_output` to be enabled
-2. Compares the current source files with existing translations
-3. Only translates keys that are:
-   - **New**: Keys that don't exist in the current translation
-   - **Changed**: Keys whose source text has been modified
-4. Preserves existing translations for unchanged keys
-5. Significantly reduces translation API calls and costs
-
-**Example workflow:**
-- **First run**: Translates all keys (normal behavior)
-- **Subsequent runs**: Only translates new/changed keys
-- **Output**: Shows which keys are being translated: `New key found: welcome_message` or `Changed key found: login_button`
-
-**Note**: This feature is particularly useful for large projects where you frequently add or modify only a few translation keys.
-
-### Changing location of translated file 
-* use ```--output_directory``` with directory argument to change the saving location for the translated output file
-
-```yaml
-flutter packages pub run arb_translator:translate --source_arb path/to/source_en.arb --api_key path/to/api_key_file --language_codes hi,en,zh --output_directory /path/to/my/custom/output_directory/
-```
-
-### Custom Translations
-If a translation by Google is incorrect or less suitable, you can override it by adding an 'x-translations' attribute and then specify your own translation for any specified language code. For instance, overriding the Swedish translation of the word "Continue" to "Fortsätt" would be done like this:
+Ensure your ARB files follow the standard format:
 
 ```json
-"continue_": "Continue",
-"@continue_": {
-  "description": "custom translations",
-  "x-translations": {
-    "sv": "Fortsätt"
+{
+  "@@locale": "en",
+  "@@last_modified": "2024-01-01T00:00:00.000Z",
+  "hello": "Hello",
+  "@hello": {
+    "description": "A greeting message"
+  },
+  "welcome": "Welcome {name}!",
+  "@welcome": {
+    "description": "Welcome message with name placeholder",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
   }
 }
 ```
 
-### Don't like the name ```arb_translator_..blah..blah..blah.arb``` ??
-* use ```--output_file_name``` with the single file name so that the output file name will be changed.
-* from the below code the output file will be of the name justkawal_{language code}.arb
-* Remember that we will automatically concate the language code of the respective files
+## 🎯 Usage
 
-```yaml
-flutter packages pub run arb_translator:translate --source_arb path/to/source_en.arb --api_key path/to/api_key_file --language_codes hi,en,zh --output_directory /path/to/my/custom/output_directory/ --output_file_name justkawal_
+### Command Line Interface
+
+#### Translate a Directory
+
+```bash
+smart_arb_translator \
+  --source_dir lib/l10n \
+  --api_key path/to/api_key.txt \
+  --language_codes es,fr,de,it \
+  --cache_directory lib/l10n_cache \
+  --l10n_directory lib/l10n
 ```
 
-### How to save api_key
-* Create a text file and then put the api key got from google cloud console in that file.
-* Now just simply call the file's path as the argument for --api_key
+#### Translate a Single File
 
-### Having trouble using api key for translation ?
-* Enable Cloud Translation API inside APIS and Services section in google cloud console.
-* Some quota of google Cloud translation APIS are free for translating upto a limit
-* [Check Pricing and quota here](https://cloud.google.com/translate/pricing)
+```bash
+smart_arb_translator \
+  --source_arb lib/l10n/app_en.arb \
+  --api_key path/to/api_key.txt \
+  --language_codes es,fr \
+  --output_file_name app \
+  --append-lang-code
+```
+
+### Command Line Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--source_dir` | Source directory containing ARB files | - |
+| `--source_arb` | Single ARB file to translate | - |
+| `--api_key` | Path to Google Translate API key file | **Required** |
+| `--language_codes` | Comma-separated target language codes | `es` |
+| `--cache_directory` | Directory for translation cache | `lib/l10n_cache` |
+| `--l10n_directory` | Output directory for merged files | `lib/l10n` |
+| `--output_file_name` | Custom output filename | `arb_translator_` |
+| `--append-lang-code` / `--no-append-lang-code` | Append language code to filenames | `true` |
+
+### Programmatic Usage
+
+```dart
+import 'package:smart_arb_translator/smart_arb_translator.dart';
+
+void main() async {
+  // Create translation service
+  final translationService = TranslationService();
+  
+  // Translate texts
+  final translations = await translationService.translateTexts(
+    translateList: ['Hello', 'World'],
+    parameters: {'target': 'es', 'key': 'your-api-key'},
+  );
+  
+  print(translations); // ['Hola', 'Mundo']
+}
+```
+
+## 🎨 Advanced Features
+
+### Manual Translation Overrides
+
+You can provide manual translations that will override Google Translate results:
+
+```json
+{
+  "greeting": "Hello",
+  "@greeting": {
+    "description": "A simple greeting",
+    "@x-translations": {
+      "es": "¡Hola!",
+      "fr": "Salut!"
+    }
+  }
+}
+```
+
+### Smart Change Detection
+
+The tool automatically detects:
+- New translation keys
+- Modified source text
+- Changed metadata/attributes
+- Only translates what's necessary
+
+### Batch Processing
+
+Process entire directory structures:
+
+```
+lib/l10n/
+├── common/
+│   ├── app_en.arb
+│   └── errors_en.arb
+├── features/
+│   ├── auth_en.arb
+│   └── profile_en.arb
+└── app_en.arb
+```
+
+All files will be processed recursively and organized in the output structure.
+
+## 🔄 Integration with Flutter
+
+### 1. Add to your Flutter project
+
+```yaml
+# pubspec.yaml
+dev_dependencies:
+  smart_arb_translator: ^1.0.0
+
+flutter:
+  generate: true
+```
+
+### 2. Configure l10n
+
+```yaml
+# l10n.yaml
+arb-dir: lib/l10n
+template-arb-file: app_en.arb
+output-localization-file: app_localizations.dart
+```
+
+### 3. Translate and generate
+
+```bash
+# Translate ARB files
+smart_arb_translator --source_dir lib/l10n --api_key api_key.txt --language_codes es,fr,de
+
+# Generate Flutter localizations
+flutter gen-l10n
+```
+
+## 🛠️ Development
+
+### Project Structure
+
+```
+lib/
+├── smart_arb_translator.dart          # Main library export
+└── src/
+    ├── argument_parser.dart           # CLI argument handling
+    ├── arb_processor.dart            # ARB file processing
+    ├── console_utils.dart            # Console utilities
+    ├── directory_processor.dart      # Directory operations
+    ├── file_operations.dart          # File utilities
+    ├── single_file_processor.dart    # Single file processing
+    ├── translation_service.dart      # Google Translate API
+    ├── utils.dart                    # General utilities
+    ├── icu_parser.dart              # ICU message parsing
+    └── models/
+        ├── arb_attributes.dart       # ARB metadata model
+        ├── arb_document.dart         # ARB document model
+        └── arb_resource.dart         # ARB resource model
+```
+
+### Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
+
+### Running Tests
+
+```bash
+dart test
+```
+
+## 📝 Language Codes
+
+Supported language codes include:
+
+| Code | Language | Code | Language |
+|------|----------|------|----------|
+| `es` | Spanish | `fr` | French |
+| `de` | German | `it` | Italian |
+| `pt` | Portuguese | `ru` | Russian |
+| `ja` | Japanese | `ko` | Korean |
+| `zh` | Chinese | `ar` | Arabic |
+
+[Full list of supported languages](https://cloud.google.com/translate/docs/languages)
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **API Key Error**: Ensure your API key file exists and contains a valid key
+2. **Permission Error**: Check file permissions for source and output directories
+3. **Invalid ARB**: Validate your ARB files are properly formatted JSON
+4. **Network Error**: Check internet connection and API quotas
+
+### Debug Mode
+
+Add `--verbose` flag for detailed logging:
+
+```bash
+smart_arb_translator --source_dir lib/l10n --api_key api_key.txt --language_codes es --verbose
+```
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+This project was originally inspired by and forked from [justkawal/arb_translator](https://github.com/justkawal/arb_translator). We're grateful for the foundation provided by the original work.
+
+### What's New in Smart ARB Translator:
+- 🧠 **Smart Change Detection**: Only translates modified content
+- 🏗️ **Modular Architecture**: Complete refactor for maintainability  
+- ⚡ **Enhanced Performance**: Optimized for large projects
+- 📚 **Professional Documentation**: Comprehensive guides and examples
+- 🔧 **Better Developer Experience**: Improved CLI and programmatic API
+
+### Original Project Credits:
+- **Original Author**: [Kawal Jeet](https://github.com/justkawal)
+- **Original Repository**: [arb_translator](https://github.com/justkawal/arb_translator)
+- **License**: MIT (maintained in this project)
+
+Built with ❤️ for the Flutter community
+
+## 📞 Support
+
+- 🐛 [Report Issues](https://github.com/YOUR_USERNAME/smart_arb_translator/issues)
+- 💡 [Feature Requests](https://github.com/YOUR_USERNAME/smart_arb_translator/issues)
+- 📖 [Documentation](https://github.com/YOUR_USERNAME/smart_arb_translator#readme)
+
+---
+
+Made with ❤️ for the Flutter community
